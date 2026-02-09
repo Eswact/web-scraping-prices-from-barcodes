@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fiyat Karşılaştırma</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Barkod Kullanarak Fiyat Karşılaştırma</h1>
+            <p>Ürünlerinizin barkod numaralarını aşağıdaki alana girerek, 8 farklı online marketteki güncel fiyatlarını saniyeler içinde karşılaştırabilirsiniz. Tek bir barkod veya birden fazla barkod girebilirsiniz - her satıra bir barkod yazmanız veya virgülle ayırmanız yeterli. Sonuçlar gerçek zamanlı olarak ekranınıza gelecektir.</p>
+        </div>
+
+        <div class="markets">
+            <h2>Desteklenen Marketler</h2>
+            <ul>
+                <li>
+                    <img src="images/trendyol.png" alt="Trendyol Logo" />
+                    <span>Trendyol</span>
+                </li>
+                <li>
+                    <img src="images/hepsiburada.png" alt="Hepsiburada Logo" />
+                    <span>Hepsiburada</span>
+                </li>
+                <li>
+                    <img src="images/pazarama.png" alt="Pazarama Logo" />
+                    <span>Pazarama</span>
+                </li>
+                <li>
+                    <img src="images/carrefour.png" alt="CarrefourSA Logo" />
+                    <span>CarrefourSA</span>
+                </li>
+                <li>
+                    <img src="images/sok.png" alt="Şok Logo" />
+                    <span>Şok</span>
+                </li>
+                <li>
+                    <img src="images/mopas.png" alt="Mopaş Logo" />
+                    <span>Mopaş</span>
+                </li>
+                <li>
+                    <img src="images/afta.png" alt="Afta Market Logo" />
+                    <span>Afta Market</span> 
+                </li>
+                <li>
+                    <img src="images/onur.png" alt="Onur Market Logo" />
+                    <span>Onur Market</span> 
+                </li>
+            </ul>
+        </div>
+
+        <div class="results-container">
+            <div class="search-card">
+                <div class="input-section">
+                    <label for="barcodeInput">Barkod Numaraları</label>
+                    <textarea 
+                        id="barcodeInput" 
+                        placeholder="Barkod numaralarını her satıra bir tane gelecek şekilde girin...&#10;&#10;Örnek:&#10;8690504085720&#10;8690632994055&#10;5900951311321"
+                    ></textarea>
+                    <div class="helper-text">
+                        Her satıra bir barkod numarası girin veya virgül ile ayırın
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-search" onclick="searchBarcodes()">Fiyatları Bul</button>
+                    <button class="btn-clear" onclick="clearAll()">Temizle</button>
+                </div>
+            </div>
+
+            <div class="loading" id="loading">
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill">0%</div>
+                    </div>
+                    <div class="progress-text" id="progressText">Başlatılıyor...</div>
+                </div>
+            </div>
+
+            <div class="live-results" id="liveResults"></div>
+        </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
