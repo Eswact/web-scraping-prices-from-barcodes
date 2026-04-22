@@ -221,7 +221,11 @@ app.post("/api/search-stream", async (req, res) => {
         const { barcodes } = req.body;
 
         if (!barcodes || !Array.isArray(barcodes) || barcodes.length === 0) {
-            res.write(`data: ${JSON.stringify({ error: "Geçerli barkod listesi gönderilmedi" })}\n\n`);
+            res.write(`data: ${JSON.stringify({ 
+                type: 'error',
+                status: 'error',
+                message: "Geçerli barkod listesi gönderilmedi" 
+            })}\n\n`);
             res.end();
             return;
         }
@@ -245,18 +249,34 @@ app.post("/api/search-stream", async (req, res) => {
             
             res.write(`data: ${JSON.stringify({ 
                 type: 'result', 
-                data: result 
+                data: result,
+                webList: webList    // ← her result'ta gönder (ön taraf ilkinde alır, sonrakiler zaten aynı)
             })}\n\n`);
         }
 
         await browser.close();
 
-        res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);
+        const foundCount = /* yerel sayım */ (() => {
+            // browser kapandıktan sonra elimizde result yok, complete'e sadece meta gönderiyoruz
+            return null;
+        })();
+
+        res.write(`data: ${JSON.stringify({ 
+            type: 'complete',
+            status: 'success',
+            message: `${barcodes.length} barkodun taraması tamamlandı.`,
+            totalBarcodes: barcodes.length,
+            webList: webList    // ← complete'te de gönder (modal henüz açılmamışsa buradan alır)
+        })}\n\n`);
         res.end();
 
     } catch (error) {
         console.error("Hata:", error);
-        res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+        res.write(`data: ${JSON.stringify({ 
+            type: 'error',
+            status: 'error',
+            message: "Sunucu hatası oluştu, lütfen tekrar deneyin."
+        })}\n\n`);
         res.end();
     }
 });
@@ -266,7 +286,10 @@ app.post("/api/search", async (req, res) => {
         const { barcodes } = req.body;
 
         if (!barcodes || !Array.isArray(barcodes) || barcodes.length === 0) {
-            return res.status(400).json({ error: "Geçerli barkod listesi gönderilmedi" });
+            return res.status(400).json({ 
+                status: "error",
+                message: "Geçerli barkod listesi gönderilmedi" 
+            });
         }
 
         const browser = await puppeteer.launch({ 
@@ -275,7 +298,6 @@ app.post("/api/search", async (req, res) => {
         });
         
         const results = [];
-
         for (const barcode of barcodes) {
             console.log(`Aranıyor: ${barcode}`);
             const result = await fetchBarcodePricesParallel(barcode, browser);
@@ -284,15 +306,23 @@ app.post("/api/search", async (req, res) => {
 
         await browser.close();
 
+        const foundCount = results.filter(r => Object.keys(r.prices).length > 0).length;
+
         res.json({
-            success: true,
+            status: "success",
+            message: `${barcodes.length} barkoddan ${foundCount} tanesi en az bir markette bulundu.`,
+            totalBarcodes: barcodes.length,
+            foundCount: foundCount,
+            webList: webList,   // ön tarafa URL'leri gönder
             results: results,
-            totalBarcodes: barcodes.length
         });
 
     } catch (error) {
         console.error("Hata:", error);
-        res.status(500).json({ error: "Sunucu hatası: " + error.message });
+        res.status(500).json({ 
+            status: "error",
+            message: "Sunucu hatası oluştu, lütfen tekrar deneyin." 
+        });
     }
 });
 
