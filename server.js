@@ -1,7 +1,10 @@
 const express = require("express");
-const puppeteer = require("puppeteer");
+const puppeteerExtra = require("puppeteer-extra");
+const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const cheerio = require("cheerio");
 const cors = require("cors");
+
+puppeteerExtra.use(StealthPlugin());
 
 const app = express();
 app.use(cors());
@@ -16,7 +19,12 @@ const WAIT_BETWEEN_MS = 0;
 
 const TIMEOUT_CONFIG = {
     default: 8000,
-    carrefoursa: 10000,
+    carrefoursa: 12000,
+};
+
+// search-stream-fast'ta istekler arasında bekleme (ms). Bot tespitini önler.
+const WAIT_BETWEEN_REQUESTS_MS = {
+    carrefoursa: 1500,
 };
 
 const webList = {
@@ -25,7 +33,6 @@ const webList = {
     pazarama: "https://www.pazarama.com/arama?q=",
     carrefoursa: "https://www.carrefoursa.com/search/?text=",
     mopas: "https://mopas.com.tr/search/?text=",
-    onurMarket: "https://www.onurmarket.com/Arama?1&kelime=",
     aftaMarket: "https://www.aftamarket.com.tr/arama?q=",
     sokMarket: "https://www.sokmarket.com.tr/arama?q=",
 };
@@ -61,16 +68,6 @@ const parsers = {
         }
         return $(".product-card").get().map((el) => {
             const productPrice = $(el).find(".product-card__price .leading-tight").text().trim() || "";
-            return productPrice;
-        });
-    },
-
-    onurMarket: ($) => {
-        if ($("#ProductPageProductList .productItem").get().length > 1) {
-            return false;
-        }
-        return $("#ProductPageProductList .productItem").get().map((el) => {
-            const productPrice = $(el).find(".productPrice .discountPriceSpan").text().trim() || "";
             return productPrice;
         });
     },
@@ -153,11 +150,13 @@ function extractFirstPrice(parsed) {
 }
 
 async function scrapeSinglePage(page, market, baseUrl, barcode) {
+    const isDebug = market === 'carrefoursa';
     try {
         await page.setUserAgent(USER_AGENT);
         const timeout = TIMEOUT_CONFIG[market] || TIMEOUT_CONFIG.default;
-        
-        await page.goto(baseUrl + barcode, {
+        const targetUrl = baseUrl + barcode;
+
+        const response = await page.goto(targetUrl, {
             waitUntil: "domcontentloaded",
             timeout: timeout
         });
@@ -166,10 +165,12 @@ async function scrapeSinglePage(page, market, baseUrl, barcode) {
         const $ = cheerio.load(html);
 
         const parsed = parsers[market]($);
+
         return extractFirstPrice(parsed);
 
     } catch (err) {
-        console.warn(`${market} hata: ${err.message}`);
+        if (isDebug) console.error(`[CF] ✖ ${barcode} — HATA: ${err.message}`);
+        else console.warn(`${market} hata: ${err.message}`);
         return null;
     }
 }
@@ -230,7 +231,7 @@ app.post("/api/search-stream", async (req, res) => {
             return;
         }
 
-        const browser = await puppeteer.launch({ 
+        const browser = await puppeteerExtra.launch({ 
             headless: "new",
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
@@ -281,6 +282,103 @@ app.post("/api/search-stream", async (req, res) => {
     }
 });
 
+app.post("/api/search-stream-fast", async (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    try {
+        const { barcodes } = req.body;
+
+        if (!barcodes || !Array.isArray(barcodes) || barcodes.length === 0) {
+            res.write(`data: ${JSON.stringify({
+                type: 'error',
+                message: "Geçerli barkod listesi gönderilmedi"
+            })}\n\n`);
+            res.end();
+            return;
+        }
+
+        const browser = await puppeteerExtra.launch({
+            headless: "new",
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
+
+        const entries = Object.entries(webList);
+
+        // Her platform için bir tab açılır, o tab tüm barkodları sırasıyla işler.
+        // Tüm platformlar birbirinden bağımsız olarak paralel çalışır.
+        await Promise.all(
+            entries.map(async ([market, baseUrl]) => {
+                const createPage = async () => {
+                    const p = await browser.newPage();
+                    await p.setRequestInterception(true);
+                    p.on('request', (req) => {
+                        if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
+                            req.abort();
+                        } else {
+                            req.continue();
+                        }
+                    });
+                    return p;
+                };
+
+                let page = await createPage();
+                let consecutiveFailures = 0;
+                const waitMs = WAIT_BETWEEN_REQUESTS_MS[market] || 0;
+
+                for (const barcode of barcodes) {
+                    // Art arda 2+ başarısız istek varsa sayfa muhtemelen bloklandı, yenile
+                    if (consecutiveFailures >= 2) {
+                        await page.close().catch(() => {});
+                        page = await createPage();
+                        consecutiveFailures = 0;
+                    }
+
+                    if (waitMs > 0) {
+                        await new Promise(resolve => setTimeout(resolve, waitMs));
+                    }
+
+                    const price = await scrapeSinglePage(page, market, baseUrl, barcode);
+
+                    if (price) {
+                        consecutiveFailures = 0;
+                    } else {
+                        consecutiveFailures++;
+                    }
+
+                    res.write(`data: ${JSON.stringify({
+                        type: 'result',
+                        barcode,
+                        platform: market,
+                        price: price || null
+                    })}\n\n`);
+                }
+
+                await page.close().catch(() => {});
+            })
+        );
+
+        await browser.close();
+
+        res.write(`data: ${JSON.stringify({
+            type: 'complete',
+            message: `${barcodes.length} barkodun taraması tamamlandı.`,
+            totalBarcodes: barcodes.length,
+            totalPlatforms: entries.length
+        })}\n\n`);
+        res.end();
+
+    } catch (error) {
+        console.error("Hata:", error);
+        res.write(`data: ${JSON.stringify({
+            type: 'error',
+            message: "Sunucu hatası oluştu, lütfen tekrar deneyin."
+        })}\n\n`);
+        res.end();
+    }
+});
+
 app.post("/api/search", async (req, res) => {
     try {
         const { barcodes } = req.body;
@@ -292,7 +390,7 @@ app.post("/api/search", async (req, res) => {
             });
         }
 
-        const browser = await puppeteer.launch({ 
+        const browser = await puppeteerExtra.launch({ 
             headless: "new",
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
