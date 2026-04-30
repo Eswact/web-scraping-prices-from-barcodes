@@ -1,10 +1,40 @@
+require("dotenv").config();
+
 const express = require("express");
 const puppeteerExtra = require("puppeteer-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const cheerio = require("cheerio");
 const cors = require("cors");
+const Redis = require("ioredis");
 
 puppeteerExtra.use(StealthPlugin());
+
+// ── Redis cache ────────────────────────────────────────────────
+const CACHE_TTL = 60 * 60 * (parseInt(process.env.REDIS_CACHE_TTL_HOURS, 10) || 24); // saat cinsinden, varsayılan 24
+// Null fiyat için özel sentinel — Redis'te null string saklanamaz
+const CACHE_NULL = "__null__";
+
+const redis = new Redis({
+    host: process.env.REDIS_HOST || "127.0.0.1",
+    port: process.env.REDIS_PORT  || 6379,
+    password: process.env.REDIS_PASSWORD || undefined,
+    lazyConnect: true,      // başlangıçta bağlantı denemez; ilk işlemde bağlanır
+    enableOfflineQueue: false,
+    retryStrategy: (times) => (times > 3 ? null : Math.min(times * 200, 2000)),
+});
+
+redis.on("error", (err) => console.warn("[Redis] Hata:", err.message));
+
+async function cacheGet(key) {
+    try { return await redis.get(key); }
+    catch (_) { return null; }
+}
+
+async function cacheSet(key, value) {
+    try { await redis.setex(key, CACHE_TTL, value ?? CACHE_NULL); }
+    catch (_) { /* Redis yoksa sessizce devam et */ }
+}
+// ──────────────────────────────────────────────────────────────
 
 const app = express();
 app.use(cors());
@@ -328,7 +358,24 @@ app.post("/api/search-stream-fast", async (req, res) => {
                 const waitMs = WAIT_BETWEEN_REQUESTS_MS[market] || 0;
 
                 for (const barcode of barcodes) {
-                    // Art arda 2+ başarısız istek varsa sayfa muhtemelen bloklandı, yenile
+                    const cacheKey = `price:${barcode}:${market}`;
+
+                    // 1. Cache kontrolü
+                    const cached = await cacheGet(cacheKey);
+                    if (cached !== null) {
+                        // Cache hit — scrape atla, anında stream et
+                        const price = cached === CACHE_NULL ? null : cached;
+                        res.write(`data: ${JSON.stringify({
+                            type: 'result',
+                            barcode,
+                            platform: market,
+                            price,
+                            fromCache: true
+                        })}\n\n`);
+                        continue;
+                    }
+
+                    // 2. Cache miss — art arda 2+ hata varsa tab'ı yenile
                     if (consecutiveFailures >= 2) {
                         await page.close().catch(() => {});
                         page = await createPage();
@@ -340,12 +387,10 @@ app.post("/api/search-stream-fast", async (req, res) => {
                     }
 
                     const price = await scrapeSinglePage(page, market, baseUrl, barcode);
+                    price ? consecutiveFailures = 0 : consecutiveFailures++;
 
-                    if (price) {
-                        consecutiveFailures = 0;
-                    } else {
-                        consecutiveFailures++;
-                    }
+                    // 3. Sonucu cache'e yaz (null da dahil — "bulunamadı" bilgisi de geçerli veri)
+                    await cacheSet(cacheKey, price);
 
                     res.write(`data: ${JSON.stringify({
                         type: 'result',
