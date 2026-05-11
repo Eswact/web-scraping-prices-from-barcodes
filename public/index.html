@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barkod Fiyat Takipçisi</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- ===== Sticky Header ===== -->
+    <header class="site-header">
+        <div class="site-header-inner">
+            <div class="brand">
+                <div class="brand-icon">
+                    <span class="material-symbols-outlined">barcode_scanner</span>
+                </div>
+                <span class="brand-name">Barkod Takipçisi</span>
+            </div>
+            <div class="header-right">
+                <div class="status-chip" id="statusChip">
+                    <span class="status-dot"></span>
+                    <span class="status-label" id="statusLabel">Bekleniyor</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===== Main ===== -->
+    <main class="main">
+        <div class="container">
+
+            <!-- Page Heading -->
+            <div class="page-heading">
+                <div>
+                    <h1 class="page-title">Barkod Fiyat Takipçisi</h1>
+                    <div class="page-subtitle-row">
+                        <p class="page-subtitle">Yedi büyük markette fiyatları takip edin.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Card -->
+            <div class="input-card">
+                <div class="input-card-header">
+                    <span class="material-symbols-outlined input-card-icon">add_circle</span>
+                    <span class="input-card-title">Barkod Gir</span>
+                    <span class="input-card-hint">Desteklenir: GTIN, EAN, UPC</span>
+                </div>
+                <div class="input-card-body">
+                    <textarea
+                        id="barcodeInput"
+                        placeholder="Barkod numaralarını her satıra bir tane girin...&#10;&#10;Örnek:&#10;8690504085720&#10;8690632994055&#10;5900951311321"
+                        rows="5"
+                    ></textarea>
+                </div>
+                <div class="input-card-footer">
+                    <div class="input-footer-left">
+                        <button class="btn-secondary btn-clear" onclick="clearAll()">
+                            <span class="material-symbols-outlined">close</span>
+                            Temizle
+                        </button>
+                    </div>
+                    <div class="input-footer-right">
+                        <span class="input-footer-hint">Desteklenir: UPC, EAN, ISBN</span>
+                        <button class="btn-primary btn-search" onclick="searchBarcodes()">
+                            <span class="material-symbols-outlined">search</span>
+                            Fiyat Ara
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading bar (kept for JS compatibility, styled as slim banner) -->
+            <div class="loading" id="loading">
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">Başlatılıyor...</div>
+                </div>
+            </div>
+
+            <!-- Results Section (hidden until search starts) -->
+            <div class="results-section" id="resultsSection">
+                <div class="results-section-header">
+                    <h2 class="results-section-title">Aktif Tarama Sonuçları</h2>
+                    <span class="results-count" id="resultsCount"></span>
+                </div>
+                <div class="live-results" id="liveResults"></div>
+            </div>
+
+            <!-- Empty State (shown on page load) -->
+            <div class="empty-state" id="emptyState">
+                <div class="empty-icon-wrapper">
+                    <div class="empty-icon-glow"></div>
+                    <div class="empty-icon">
+                        <span class="material-symbols-outlined">inventory_2</span>
+                    </div>
+                    <div class="empty-icon-badge">
+                        <span class="material-symbols-outlined">add</span>
+                    </div>
+                </div>
+
+                <h3 class="empty-title">Barkod Girilmedi</h3>
+                <p class="empty-text">
+                    Fiyatları karşılaştırmak için yukarıdaki alana barkod numaralarını girin.
+                    Trendyol, Hepsiburada, CarrefourSA ve daha fazlası desteklenmektedir.
+                </p>
+
+                <div class="empty-markets">
+                    <img src="images/trendyol.png" alt="Trendyol">
+                    <img src="images/hepsiburada.png" alt="Hepsiburada">
+                    <img src="images/pazarama.png" alt="Pazarama">
+                    <img src="images/carrefour.png" alt="CarrefourSA">
+                    <img src="images/sok.png" alt="Şok">
+                    <img src="images/mopas.png" alt="Mopaş">
+                    <img src="images/afta.png" alt="Afta Market">
+                </div>
+
+                <div class="empty-features">
+                    <div class="empty-feature">
+                        <div class="empty-feature-icon">
+                            <span class="material-symbols-outlined">bolt</span>
+                        </div>
+                        <div class="empty-feature-text">
+                            <h4>Gerçek Zamanlı</h4>
+                            <p>Fiyatlar canlı olarak çekilir.</p>
+                        </div>
+                    </div>
+                    <div class="empty-feature">
+                        <div class="empty-feature-icon">
+                            <span class="material-symbols-outlined">monitoring</span>
+                        </div>
+                        <div class="empty-feature-text">
+                            <h4>7 Market</h4>
+                            <p>Türkiye'nin önde gelen platformları.</p>
+                        </div>
+                    </div>
+                    <div class="empty-feature">
+                        <div class="empty-feature-icon">
+                            <span class="material-symbols-outlined">download</span>
+                        </div>
+                        <div class="empty-feature-text">
+                            <h4>CSV Dışa Aktarma</h4>
+                            <p>Sonuçları Excel'e aktarın.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Background decorations -->
+    <div class="bg-blob bg-blob--tr"></div>
+    <div class="bg-blob bg-blob--bl"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
